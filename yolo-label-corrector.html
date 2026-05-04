@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOLO Label Corrector</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-base:    #0d0d0f;
+  --bg-sidebar: #131316;
+  --bg-panel:   #131316;
+  --bg-canvas:  #1a1a1f;
+  --bg-card:    #1c1c22;
+  --bg-hover:   #22222a;
+  --bg-active:  #28283a;
+  --border:     #252530;
+  --border-md:  #2e2e3e;
+  --text-hi:    #f0f0f4;
+  --text-mid:   #9090a0;
+  --text-lo:    #4a4a5a;
+  --accent:     #6366f1;
+  --accent-hov: #818cf8;
+  --accent-dim: rgba(99,102,241,.14);
+  --green:      #22c55e;
+  --yellow:     #f59e0b;
+  --red:        #ef4444;
+  --r:          5px;
+  --sw:         220px;
+  --pw:         264px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-hi);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ── Header ── */
+.header {
+  height: 48px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-md);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  flex-shrink: 0;
+  z-index: 20;
+}
+.logo {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 13.5px; letter-spacing: -.2px; flex-shrink: 0;
+}
+.logo-badge {
+  width: 26px; height: 26px; background: var(--accent); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 900; color: #fff; flex-shrink: 0;
+}
+.logo-sub { font-weight: 400; color: var(--text-mid); font-size: 12px; margin-left: 2px; }
+.h-sep { flex: 1; }
+.h-info { font-size: 11.5px; color: var(--text-mid); }
+
+/* ── Buttons ── */
+.btn {
+  height: 30px; padding: 0 12px; border: none; border-radius: var(--r);
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .12s, opacity .12s; white-space: nowrap; font-family: inherit;
+}
+.btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+.btn-ghost { background: var(--bg-hover); color: var(--text-hi); border: 1px solid var(--border-md); }
+.btn-ghost:hover { background: var(--bg-active); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hov); }
+.btn-accent {
+  background: var(--accent-dim); color: var(--accent-hov);
+  border: 1px solid rgba(99,102,241,.35); width: 100%; justify-content: center; height: 32px;
+}
+.btn-accent:hover { background: rgba(99,102,241,.22); }
+.btn-danger {
+  background: rgba(239,68,68,.1); color: #fc8181;
+  border: 1px solid rgba(239,68,68,.25); width: 100%;
+  justify-content: center; height: 28px; font-size: 11px;
+}
+.btn-danger:hover { background: rgba(239,68,68,.2); }
+.btn-xs { height: 22px; padding: 0 8px; font-size: 10px; }
+.btn-sel-all {
+  background: var(--accent-dim); color: var(--accent-hov);
+  border: 1px solid rgba(99,102,241,.3); height: 22px; padding: 0 8px; font-size: 10px;
+}
+.btn-sel-all:hover { background: rgba(99,102,241,.25); }
+.btn-sel-all.active {
+  background: var(--accent); color: #fff;
+  border-color: var(--accent);
+}
+
+/* ── Layout ── */
+.layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sw); background: var(--bg-sidebar);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0;
+}
+.sb-head {
+  height: 38px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.sb-head-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text-mid); }
+.corr-pill { background: var(--bg-hover); padding: 2px 8px; border-radius: 10px; font-size: 11px; color: var(--text-mid); }
+.file-list-wrap { flex: 1; overflow: hidden; position: relative; }
+
+.vl-root { position: relative; overflow-y: auto; height: 100%; scroll-behavior: auto; }
+.vl-root::-webkit-scrollbar { width: 4px; }
+.vl-root::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 2px; }
+.vl-phantom { position: absolute; top: 0; left: 0; width: 1px; pointer-events: none; }
+.vl-inner { position: absolute; top: 0; left: 0; right: 0; }
+
+.fi {
+  height: 40px; display: flex; align-items: center; padding: 0 12px; gap: 8px;
+  cursor: pointer; user-select: none; border-left: 2px solid transparent; transition: background .08s;
+}
+.fi:hover { background: var(--bg-hover); }
+.fi.active { background: var(--bg-active); border-left-color: var(--accent); padding-left: 10px; }
+.fi-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--text-lo); transition: background .2s; }
+.fi-dot.ok { background: var(--green); box-shadow: 0 0 4px rgba(34,197,94,.5); }
+.fi-dot.warn { background: var(--yellow); }
+.fi-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-hi); }
+.fi-badge { font-size: 10px; color: var(--text-lo); flex-shrink: 0; background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; }
+
+/* ── Canvas area ── */
+.canvas-area {
+  flex: 1; background: var(--bg-canvas);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden; min-width: 0;
+}
+.canvas-area.drag-over::after {
+  content: ''; position: absolute; inset: 0;
+  border: 2px dashed var(--accent); border-radius: 4px; pointer-events: none; z-index: 10;
+}
+
+.drop-zone {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; z-index: 5;
+}
+.drop-box {
+  text-align: center; padding: 36px 44px;
+  border: 1.5px dashed var(--border-md); border-radius: 14px;
+  background: rgba(19,19,22,.85); backdrop-filter: blur(6px); max-width: 380px;
+}
+.drop-ico { font-size: 44px; color: var(--accent); margin-bottom: 14px; line-height: 1; }
+.drop-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+.drop-sub { font-size: 12px; color: var(--text-mid); line-height: 1.6; }
+.drop-or { margin: 14px 0 10px; font-size: 11px; color: var(--text-lo); display: flex; align-items: center; gap: 10px; }
+.drop-or::before, .drop-or::after { content: ''; flex: 1; height: 1px; background: var(--border-md); }
+
+/* Bulk-select badge floating over canvas */
+.bulk-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(99,102,241,.92);
+  color: #fff;
+  padding: 5px 16px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  display: none;
+  z-index: 6;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0,0,0,.4);
+  letter-spacing: .1px;
+}
+.bulk-badge.show { display: block; }
+
+#mainCanvas {
+  display: none; cursor: crosshair;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  max-width: 100%; max-height: 100%;
+}
+
+/* ── Right panel ── */
+.rpanel {
+  width: var(--pw); background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; flex-shrink: 0;
+  overflow-y: auto; overflow-x: hidden;
+}
+.rpanel::-webkit-scrollbar { width: 4px; }
+.rpanel::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 2px; }
+
+.psec { padding: 14px; border-bottom: 1px solid var(--border); }
+.psec:last-child { border-bottom: none; margin-top: auto; }
+
+.ptitle {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--text-mid); margin-bottom: 11px;
+}
+.ptitle-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px;
+}
+.ptitle-row .ptitle { margin-bottom: 0; }
+
+.info-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 12px; }
+.ig-label { color: var(--text-mid); }
+.ig-val { color: var(--text-hi); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-msg { font-size: 12px; color: var(--text-lo); text-align: center; padding: 8px 0; }
+
+.offset-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
+.inp-grp label { display: block; font-size: 11px; color: var(--text-mid); margin-bottom: 4px; }
+.inp-grp input {
+  width: 100%; height: 32px; background: var(--bg-hover); border: 1px solid var(--border-md);
+  border-radius: var(--r); color: var(--text-hi); padding: 0 9px;
+  font-size: 13px; font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  transition: border-color .15s; -moz-appearance: textfield;
+}
+.inp-grp input::-webkit-inner-spin-button,
+.inp-grp input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.inp-grp input:focus { outline: none; border-color: var(--accent); background: var(--bg-active); }
+
+.warn-box {
+  margin-top: 8px; padding: 7px 9px;
+  background: rgba(245,158,11,.09); border: 1px solid rgba(245,158,11,.28);
+  border-radius: var(--r); font-size: 11px; color: var(--yellow); line-height: 1.5;
+}
+
+.bbox-scroll { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.bbox-scroll::-webkit-scrollbar { width: 4px; }
+.bbox-scroll::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 2px; }
+
+.bxi {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: var(--r); background: var(--bg-hover); font-size: 11px;
+  cursor: pointer; border: 1px solid transparent; transition: background .08s;
+}
+.bxi:hover { background: var(--bg-active); }
+.bxi.sel { border-color: var(--accent); background: var(--bg-active); }
+.bxi.sel-all { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.08); }
+.bxi-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.bxi-text { flex: 1; color: var(--text-mid); font-family: 'SF Mono', monospace; }
+.bxi-warn { color: var(--red); font-size: 10px; }
+
+.cls-input {
+  width: 40px; height: 22px;
+  background: var(--bg-hover); border: 1px solid var(--border-md);
+  border-radius: var(--r); color: var(--text-hi);
+  padding: 0 4px; font-size: 11px; font-family: 'SF Mono', monospace;
+  text-align: center; -moz-appearance: textfield;
+}
+.cls-input::-webkit-inner-spin-button,
+.cls-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.cls-input:focus { outline: none; border-color: var(--accent); }
+
+.legend-list { display: flex; flex-direction: column; gap: 6px; }
+.leg-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.leg-sw { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+
+/* ── Progress overlay ── */
+.filename-bar {
+  height: 26px;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--text-lo);
+  user-select: text;
+  overflow: hidden;
+}
+.filename-bar .fn-label { color: var(--text-lo); flex-shrink: 0; }
+.filename-bar .fn-name  { color: var(--text-mid); font-family: 'SF Mono','Fira Code','Menlo',monospace; white-space: nowrap; }
+
+.prog-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.65);
+  display: none; align-items: center; justify-content: center; z-index: 100;
+}
+.prog-overlay.show { display: flex; }
+.prog-box {
+  background: var(--bg-card); border: 1px solid var(--border-md);
+  border-radius: 12px; padding: 28px 36px; text-align: center; min-width: 260px;
+}
+.prog-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+.prog-track { height: 5px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+.prog-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .1s; }
+.prog-text { font-size: 12px; color: var(--text-mid); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-badge">Y</div>
+    YOLO Label Corrector
+    <span class="logo-sub">bbox offset tool</span>
+  </div>
+  <div class="h-sep"></div>
+  <span class="h-info" id="hInfo"></span>
+  <button class="btn btn-ghost" id="loadBtn">⊕ Load Files</button>
+  <input type="file" id="fileInput" multiple
+         accept=".jpg,.jpeg,.png,.webp,.txt,.zip" style="display:none">
+  <button class="btn btn-primary" id="exportBtn" disabled>↓ Export ZIP</button>
+</header>
+
+<div class="filename-bar" id="filenameBar">
+  <span class="fn-label">file</span>
+  <span class="fn-name" id="fnName">—</span>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-head">
+      <span class="sb-head-label">Images</span>
+      <span class="corr-pill" id="corrPill">0 / 0</span>
+    </div>
+    <div class="file-list-wrap" id="fileListWrap"></div>
+  </aside>
+
+  <main class="canvas-area" id="canvasArea">
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-box">
+        <div class="drop-ico">◎</div>
+        <div class="drop-title">Drop Images &amp; Labels</div>
+        <div class="drop-sub">
+          JPG · PNG + YOLO <code>.txt</code> files<br>
+          or a <strong>.zip</strong> with <code>images/</code> &amp; <code>labels/</code> folders<br>
+          Paired automatically by filename
+        </div>
+        <div class="drop-or">or</div>
+        <button class="btn btn-ghost" id="browseBtn" style="margin:auto;">Browse Files</button>
+      </div>
+    </div>
+    <!-- floating badge shown during bulk-select mode -->
+    <div class="bulk-badge" id="bulkBadge">⧉ All selected — drag any box to move all · Esc to cancel</div>
+    <canvas id="mainCanvas"></canvas>
+  </main>
+
+  <aside class="rpanel">
+    <div class="psec">
+      <div class="ptitle">Image</div>
+      <div class="info-grid" id="imgInfoGrid">
+        <span class="ig-label empty-msg" style="grid-column:span 2">No image selected</span>
+      </div>
+    </div>
+
+    <div class="psec">
+      <div class="ptitle">Offset Correction</div>
+      <div class="offset-row">
+        <div class="inp-grp">
+          <label>Δx (cols, px)</label>
+          <input type="number" id="offX" value="0" step="1" placeholder="0">
+        </div>
+        <div class="inp-grp">
+          <label>Δy (rows, px)</label>
+          <input type="number" id="offY" value="0" step="1" placeholder="0">
+        </div>
+      </div>
+      <button class="btn btn-accent" id="applyCurBtn" disabled>Apply to This Image</button>
+      <button class="btn btn-accent" id="applyAllBtn" disabled
+              style="margin-top:6px;border-color:var(--border-md);color:var(--text-mid);">
+        Apply to All Images
+      </button>
+      <div class="warn-box" id="warnBox" style="display:none"></div>
+    </div>
+
+    <div class="psec">
+      <div class="ptitle-row">
+        <span class="ptitle">Bounding Boxes</span>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span style="font-size:10px;color:var(--text-mid);">cls</span>
+          <input class="cls-input" type="number" id="activeClass" value="0" min="0" step="1" title="Class for new boxes">
+          <button class="btn btn-sel-all btn-xs" id="selAllBtn" disabled>⊞ All</button>
+        </div>
+      </div>
+      <div class="bbox-scroll" id="bboxScroll">
+        <div class="empty-msg">No image selected</div>
+      </div>
+    </div>
+
+    <div class="psec">
+      <div class="ptitle">Class Legend</div>
+      <div class="legend-list" id="legendList">
+        <div class="empty-msg">No classes loaded</div>
+      </div>
+    </div>
+
+    <div class="psec">
+      <button class="btn btn-danger" id="resetBtn" disabled>↺ Reset This Image's Labels</button>
+    </div>
+  </aside>
+</div>
+
+<div class="prog-overlay" id="progOverlay">
+  <div class="prog-box">
+    <div class="prog-title" id="progTitle">Processing…</div>
+    <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+    <div class="prog-text" id="progText">0%</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════
+const COLORS = [
+  '#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7',
+  '#DDA0DD','#98FB98','#F7DC6F','#BB8FCE','#85C1E9',
+  '#F8C471','#82E0AA','#FA8072','#AED6F1','#73C6B6',
+  '#FAD7A0','#A9CCE3','#C8E6C9','#F9E4B7','#D7BDE2',
+];
+
+const color   = cls => COLORS[Math.abs(cls) % COLORS.length];
+const $       = id  => document.getElementById(id);
+const sleep   = ms  => new Promise(r => setTimeout(r, ms));
+const clamp   = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const isImg   = n => /\.(jpe?g|png|webp)$/i.test(n);
+const isTxt   = n => /\.txt$/i.test(n);
+const isZip   = n => /\.zip$/i.test(n);
+const base    = n => n.replace(/\.[^.]+$/, '');
+const getMime = n => /\.png$/i.test(n) ? 'image/png' : /\.webp$/i.test(n) ? 'image/webp' : 'image/jpeg';
+
+// ═══════════════════════════════════════════════════════════
+// DATA MODEL
+// ═══════════════════════════════════════════════════════════
+class Entry {
+  constructor(name) {
+    this.name       = name;
+    this.imgFile    = null;       // File object (from direct upload)
+    this.txtFile    = null;       // File object (from direct upload)
+    this._zipEntry  = null;       // JSZip file entry (lazy image extraction)
+    this._imgMime   = 'image/jpeg';
+    this._url       = null;       // cached blob URL
+    this.imgW       = 0;
+    this.imgH       = 0;
+    this.origLabels  = [];
+    this.labels      = [];
+    this.hasLabels   = false;   // true once label data is parsed (file OR zip)
+    this.corrected   = false;
+    this.clipped     = 0;
+  }
+
+  get hasImage() { return !!(this.imgFile || this._zipEntry); }
+
+  // Async because zip images are extracted on demand
+  async resolveUrl() {
+    if (this._url) return this._url;
+    if (this.imgFile) {
+      this._url = URL.createObjectURL(this.imgFile);
+      return this._url;
+    }
+    if (this._zipEntry) {
+      const blob = await this._zipEntry.async('blob');
+      this._url  = URL.createObjectURL(new Blob([blob], { type: this._imgMime }));
+      return this._url;
+    }
+    return null;
+  }
+
+  resetUrl() {
+    if (this._url) { URL.revokeObjectURL(this._url); this._url = null; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  entries:     [],
+  idx:         -1,
+  imgEl:       null,
+  imgW:        0,
+  imgH:        0,
+  scale:       1,
+  drag:        null,        // see mousedown handler for shape
+  drawing:     null,        // {sx,sy} — new-bbox rubber-band start
+  rubberBand:  null,        // {sx,sy} — selection rubber-band start (S+drag)
+  drawCur:     null,        // {ex,ey} — current mouse during drawing or rubber-band
+  activeClass: 0,           // class assigned to newly drawn boxes
+  hovered:     -1,
+  selected:    -1,
+  selectedSet: new Set(),   // indices of bulk-selected bboxes
+  classes:     new Set(),
+  undoStack:   [],          // [{idx, labels}]  — populated on drag-end
+};
+
+// ═══════════════════════════════════════════════════════════
+// VIRTUAL LIST
+// ═══════════════════════════════════════════════════════════
+class VList {
+  constructor(wrap, rowH, renderHTML, onClick) {
+    this.wrap = wrap; this.rowH = rowH;
+    this.renderHTML = renderHTML; this.onClick = onClick;
+    this.items = []; this.buf = 8;
+
+    this.root  = Object.assign(document.createElement('div'), { className: 'vl-root' });
+    this.phant = Object.assign(document.createElement('div'), { className: 'vl-phantom' });
+    this.inner = Object.assign(document.createElement('div'), { className: 'vl-inner' });
+
+    this.root.appendChild(this.phant);
+    this.root.appendChild(this.inner);
+    wrap.appendChild(this.root);
+
+    this.root.addEventListener('scroll', () => this._draw());
+    this.root.addEventListener('click', e => {
+      const el = e.target.closest('[data-i]');
+      if (el) this.onClick(+el.dataset.i);
+    });
+  }
+
+  set(items, focusIdx) {
+    this.items = items;
+    this.phant.style.height = (items.length * this.rowH) + 'px';
+    if (focusIdx >= 0) {
+      this.root.scrollTop = Math.max(0, focusIdx * this.rowH - this.root.clientHeight / 2 + this.rowH / 2);
+    }
+    this._draw();
+  }
+
+  refresh() { this._draw(); }
+
+  _draw() {
+    const st  = this.root.scrollTop;
+    const vh  = this.root.clientHeight || 400;
+    const s   = Math.max(0, Math.floor(st / this.rowH) - this.buf);
+    const e   = Math.min(this.items.length, Math.ceil((st + vh) / this.rowH) + this.buf);
+    this.inner.style.top = (s * this.rowH) + 'px';
+    const f = document.createDocumentFragment();
+    for (let i = s; i < e; i++) {
+      const div = document.createElement('div');
+      div.className   = 'fi' + (i === S.idx ? ' active' : '');
+      div.style.height = this.rowH + 'px';
+      div.dataset.i   = i;
+      div.innerHTML   = this.renderHTML(this.items[i]);
+      f.appendChild(div);
+    }
+    this.inner.innerHTML = '';
+    this.inner.appendChild(f);
+  }
+}
+
+let vlist = null;
+
+function fiHTML(e) {
+  const dot     = e.corrected ? (e.clipped > 0 ? 'warn' : 'ok') : '';
+  const missing = !(e.hasImage && e.hasLabels);
+  const badge   = missing ? (e.hasImage ? '🖼' : '📄') : String(e.labels.length);
+  return `<div class="fi-dot ${dot}"></div>
+          <span class="fi-name" title="${e.name}">${e.name}</span>
+          <span class="fi-badge">${badge}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// YOLO PARSING
+// ═══════════════════════════════════════════════════════════
+function parseYOLO(text) {
+  const labels = [];
+  for (const raw of text.split('\n')) {
+    const p = raw.trim().split(/\s+/);
+    if (p.length < 5) continue;
+    const [cls, x, y, w, h] = p.map(Number);
+    if ([cls, x, y, w, h].some(isNaN)) continue;
+    labels.push({ cls: Math.round(cls), x, y, w, h });
+  }
+  return labels;
+}
+
+function labelToLine(l) {
+  return `${l.cls} ${l.x.toFixed(6)} ${l.y.toFixed(6)} ${l.w.toFixed(6)} ${l.h.toFixed(6)}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// INGEST — regular files (image + txt)
+// ═══════════════════════════════════════════════════════════
+async function ingestFiles(files) {
+  const map = new Map(S.entries.map(e => [e.name, e]));
+
+  for (const f of files) {
+    const n = base(f.name);
+    if (!map.has(n)) map.set(n, new Entry(n));
+    const e = map.get(n);
+    if (isImg(f.name)) { e.resetUrl(); e.imgFile = f; e.imgW = 0; }
+    else if (isTxt(f.name)) e.txtFile = f;
+  }
+
+  for (const e of map.values()) {
+    if (e.txtFile && e.origLabels.length === 0) {
+      const txt = await e.txtFile.text();
+      e.origLabels = parseYOLO(txt);
+      e.labels     = e.origLabels.map(l => ({ ...l }));
+      e.origLabels.forEach(l => S.classes.add(l.cls));
+      e.hasLabels  = true;
+    }
+  }
+
+  S.entries = [...map.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+// ═══════════════════════════════════════════════════════════
+// INGEST — ZIP file  (images/ + labels/ or flat structure)
+// ═══════════════════════════════════════════════════════════
+async function handleZip(file) {
+  showProg('Reading ZIP…', 0);
+
+  let zip;
+  try { zip = await JSZip.loadAsync(file); }
+  catch (err) { hideProg(); alert('Could not read ZIP: ' + err.message); return; }
+
+  setProg(0.1);
+
+  const map       = new Map(S.entries.map(e => [e.name, e]));
+  const imgItems  = [];
+  const txtItems  = [];
+
+  zip.forEach((path, entry) => {
+    if (entry.dir) return;
+    const fname = path.split('/').pop();
+    if (!fname) return;
+    const n = base(fname);
+    if (!n) return;
+    if (isImg(fname))      imgItems.push({ entry, name: n, fname });
+    else if (isTxt(fname)) txtItems.push({ entry, name: n, fname });
+  });
+
+  // Read text labels eagerly (they're tiny)
+  let done = 0;
+  for (const { entry, name } of txtItems) {
+    if (!map.has(name)) map.set(name, new Entry(name));
+    const e = map.get(name);
+    if (e.origLabels.length === 0) {
+      const txt = await entry.async('string');
+      e.origLabels = parseYOLO(txt);
+      e.labels     = e.origLabels.map(l => ({ ...l }));
+      e.origLabels.forEach(l => S.classes.add(l.cls));
+      e.hasLabels  = true;
+    }
+    if (++done % 100 === 0) { setProg(0.1 + done / txtItems.length * 0.45); await sleep(0); }
+  }
+
+  setProg(0.55);
+
+  // Register image entries lazily — just store the zip entry reference
+  for (const { entry, name, fname } of imgItems) {
+    if (!map.has(name)) map.set(name, new Entry(name));
+    const e      = map.get(name);
+    e._zipEntry  = entry;
+    e._imgMime   = getMime(fname);
+    e.resetUrl();          // invalidate any old URL
+    e.imgW = e.imgH = 0;  // reset dims; will resolve on first load
+  }
+
+  setProg(0.95);
+
+  S.entries = [...map.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  hideProg();
+}
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════════════════════════
+const cv  = $('mainCanvas');
+const ctx = cv.getContext('2d');
+
+function fitCanvas() {
+  const area = $('canvasArea').getBoundingClientRect();
+  const pad  = 24;
+  const s    = Math.min((area.width - pad * 2) / S.imgW, (area.height - pad * 2) / S.imgH);
+  S.scale    = s;
+  cv.width   = Math.round(S.imgW * s);
+  cv.height  = Math.round(S.imgH * s);
+  cv.style.width  = cv.width  + 'px';
+  cv.style.height = cv.height + 'px';
+}
+
+function draw() {
+  const e = S.entries[S.idx];
+  if (!e || !S.imgEl) return;
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(S.imgEl, 0, 0, cv.width, cv.height);
+
+  const W = cv.width, H = cv.height;
+
+  e.labels.forEach((l, i) => {
+    const c   = color(l.cls);
+    const cx  = l.x * W,   cy = l.y * H;
+    const bw  = l.w * W,   bh = l.h * H;
+    const rx  = cx - bw / 2, ry = cy - bh / 2;
+
+    const inSet = S.selectedSet.has(i);
+    const sel   = inSet || i === S.selected;
+    const hov   = !inSet && i === S.hovered;
+
+    // Fill
+    ctx.fillStyle = c + (sel ? '30' : (hov ? '20' : '12'));
+    ctx.fillRect(rx, ry, bw, bh);
+
+    // Stroke — dashed when part of multi-selection
+    ctx.strokeStyle = c;
+    ctx.lineWidth   = sel ? 2.5 : (hov ? 2 : 1.5);
+    if (inSet) {
+      ctx.setLineDash([6, 3]);
+      ctx.shadowColor = c; ctx.shadowBlur = 8;
+    } else if (sel) {
+      ctx.setLineDash([]);
+      ctx.shadowColor = c; ctx.shadowBlur = 10;
+    } else {
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+    }
+    ctx.strokeRect(rx, ry, bw, bh);
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    // Class tag
+    const tag  = String(l.cls);
+    ctx.font   = 'bold 11px monospace';
+    const tw   = ctx.measureText(tag).width;
+    const tagX = clamp(rx, 0, W - tw - 6);
+    const tagY = ry > 16 ? ry - 16 : ry;
+    ctx.fillStyle = c;
+    ctx.fillRect(tagX, tagY, tw + 6, 15);
+    ctx.fillStyle = '#000';
+    ctx.fillText(tag, tagX + 3, tagY + 11);
+
+    // OOB indicator
+    const oob = l.x < 0 || l.x > 1 || l.y < 0 || l.y > 1 ||
+                l.x - l.w / 2 < 0 || l.x + l.w / 2 > 1 ||
+                l.y - l.h / 2 < 0 || l.y + l.h / 2 > 1;
+    if (oob) {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(clamp(cx, 4, W - 4), clamp(cy, 4, H - 4), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Corner handles for single selection
+    if (i === S.selected && !S.selectedSet.has(i)) {
+      [[rx, ry], [rx + bw, ry], [rx, ry + bh], [rx + bw, ry + bh]].forEach(([hx, hy]) => {
+        ctx.fillStyle = c;
+        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+  });
+
+  // New-bbox rubber-band (plain drag)
+  if (S.drawing && S.drawCur) {
+    const { sx, sy } = S.drawing, { ex, ey } = S.drawCur;
+    const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
+    const bw = Math.abs(ex - sx),  bh = Math.abs(ey - sy);
+    const c  = color(S.activeClass);
+    ctx.fillStyle   = c + '22';
+    ctx.fillRect(rx, ry, bw, bh);
+    ctx.strokeStyle = c;
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(rx, ry, bw, bh);
+    ctx.setLineDash([]);
+  }
+
+  // Selection rubber-band (S + drag) — neutral white
+  if (S.rubberBand && S.drawCur) {
+    const { sx, sy } = S.rubberBand, { ex, ey } = S.drawCur;
+    const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
+    const bw = Math.abs(ex - sx),  bh = Math.abs(ey - sy);
+    ctx.fillStyle   = 'rgba(255,255,255,.06)';
+    ctx.fillRect(rx, ry, bw, bh);
+    ctx.strokeStyle = 'rgba(255,255,255,.7)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(rx, ry, bw, bh);
+    ctx.setLineDash([]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// HIT TEST
+// ═══════════════════════════════════════════════════════════
+function hitBbox(mx, my) {
+  const e = S.entries[S.idx];
+  if (!e) return -1;
+  const W = cv.width, H = cv.height;
+  for (let i = e.labels.length - 1; i >= 0; i--) {
+    const l = e.labels[i];
+    const x = (l.x - l.w / 2) * W, y = (l.y - l.h / 2) * H;
+    if (mx >= x && mx <= x + l.w * W && my >= y && my <= y + l.h * H) return i;
+  }
+  return -1;
+}
+
+function canvasMouse(ev) {
+  const r = cv.getBoundingClientRect();
+  return [
+    (ev.clientX - r.left) * (cv.width  / r.width),
+    (ev.clientY - r.top)  * (cv.height / r.height),
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════
+// S-KEY TRACKING (rubber-band selection mode)
+// ═══════════════════════════════════════════════════════════
+let sKeyDown = false;
+document.addEventListener('keydown', ev => {
+  if (ev.target.tagName === 'INPUT') return;
+  if (ev.key === 's' || ev.key === 'S') { sKeyDown = true; cv.style.cursor = 'cell'; }
+});
+document.addEventListener('keyup', ev => {
+  if (ev.key === 's' || ev.key === 'S') {
+    sKeyDown = false;
+    if (!S.drag && !S.drawing && !S.rubberBand) cv.style.cursor = 'crosshair';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// MOUSE — single drag / bulk drag / draw bbox / rubber-band select
+// ═══════════════════════════════════════════════════════════
+cv.addEventListener('mousedown', ev => {
+  const [mx, my] = canvasMouse(ev);
+  const bi = hitBbox(mx, my);
+  const e  = S.entries[S.idx];
+  if (!e) return;
+
+  if (sKeyDown) {
+    // S held → always start rubber-band selection
+    S.rubberBand = { sx: mx, sy: my };
+    S.drawCur    = { ex: mx, ey: my };
+    S.selected   = -1;
+  } else if (S.selectedSet.size > 0 && S.selectedSet.has(bi)) {
+    // Drag within an existing multi-selection → bulk move
+    S._snap = { idx: S.idx, labels: e.labels.map(l => ({ ...l })) };
+    S.drag  = {
+      sx: mx, sy: my, bulk: true,
+      origPos: e.labels.map((l, i) => S.selectedSet.has(i) ? { x: l.x, y: l.y } : null),
+    };
+    cv.style.cursor = 'grabbing';
+  } else if (bi >= 0) {
+    // Hit an existing bbox → single drag (clears multi-selection)
+    S.selectedSet.clear(); updateBulkBadge();
+    S.selected = bi;
+    S._snap    = { idx: S.idx, labels: e.labels.map(l => ({ ...l })) };
+    const l    = e.labels[bi];
+    S.drag     = { bi, sx: mx, sy: my, ox: l.x, oy: l.y, bulk: false };
+    cv.style.cursor = 'grabbing';
+  } else {
+    // Empty space → begin drawing a new bbox (clears multi-selection)
+    S.selectedSet.clear(); updateBulkBadge();
+    S.selected = -1;
+    S.drawing  = { sx: mx, sy: my };
+    S.drawCur  = { ex: mx, ey: my };
+  }
+
+  draw(); renderBboxList();
+});
+
+cv.addEventListener('mousemove', ev => {
+  const [mx, my] = canvasMouse(ev);
+
+  if (S.drag) {
+    const e  = S.entries[S.idx];
+    const dx = (mx - S.drag.sx) / cv.width;
+    const dy = (my - S.drag.sy) / cv.height;
+
+    if (S.drag.bulk) {
+      e.labels.forEach((l, i) => {
+        if (!S.drag.origPos[i]) return;
+        l.x = S.drag.origPos[i].x + dx;
+        l.y = S.drag.origPos[i].y + dy;
+      });
+    } else {
+      const l = e.labels[S.drag.bi];
+      l.x = clamp(S.drag.ox + dx, l.w / 2, 1 - l.w / 2);
+      l.y = clamp(S.drag.oy + dy, l.h / 2, 1 - l.h / 2);
+    }
+
+    e.corrected = true;
+    draw(); renderBboxList();
+  } else if (S.drawing || S.rubberBand) {
+    S.drawCur = { ex: mx, ey: my };
+    draw();
+  } else {
+    const bi  = hitBbox(mx, my);
+    const inSet = S.selectedSet.size > 0;
+    const cur = sKeyDown ? 'cell' : (bi >= 0 ? 'grab' : 'crosshair');
+    if (bi !== S.hovered || cv.style.cursor !== cur) {
+      S.hovered = bi;
+      cv.style.cursor = cur;
+      if (!inSet) draw();
+    }
+  }
+});
+
+cv.addEventListener('mouseup', () => {
+  if (S.drag) {
+    if (S._snap) {
+      S.undoStack.push(S._snap);
+      if (S.undoStack.length > 30) S.undoStack.shift();
+      S._snap = null;
+    }
+    S.drag = null;
+    cv.style.cursor = sKeyDown ? 'cell' : 'crosshair';
+    refreshSidebar();
+  } else if (S.rubberBand) {
+    // Finalize selection rubber-band
+    const { sx, sy } = S.rubberBand;
+    const { ex, ey } = S.drawCur || { ex: sx, ey: sy };
+    S.rubberBand = null; S.drawCur = null;
+
+    const W = cv.width, H = cv.height;
+    const selX1 = Math.min(sx, ex) / W, selY1 = Math.min(sy, ey) / H;
+    const selX2 = Math.max(sx, ex) / W, selY2 = Math.max(sy, ey) / H;
+
+    const e = S.entries[S.idx];
+    const newSet = new Set();
+    if (e) {
+      e.labels.forEach((l, i) => {
+        if (l.x >= selX1 && l.x <= selX2 && l.y >= selY1 && l.y <= selY2) newSet.add(i);
+      });
+    }
+    S.selectedSet = newSet;
+    S.selected    = -1;
+    updateBulkBadge();
+    draw(); renderBboxList();
+  } else if (S.drawing) {
+    const { sx, sy } = S.drawing;
+    const { ex, ey } = S.drawCur || { ex: sx, ey: sy };
+    S.drawing = null; S.drawCur = null;
+
+    const minPx = 6;
+    if (Math.abs(ex - sx) > minPx && Math.abs(ey - sy) > minPx) {
+      const W = cv.width, H = cv.height;
+      const x1 = clamp(Math.min(sx, ex) / W, 0, 1);
+      const y1 = clamp(Math.min(sy, ey) / H, 0, 1);
+      const x2 = clamp(Math.max(sx, ex) / W, 0, 1);
+      const y2 = clamp(Math.max(sy, ey) / H, 0, 1);
+      const nw = x2 - x1, nh = y2 - y1;
+      if (nw > 0 && nh > 0) {
+        const e = S.entries[S.idx];
+        S.undoStack.push({ idx: S.idx, labels: e.labels.map(l => ({ ...l })) });
+        if (S.undoStack.length > 30) S.undoStack.shift();
+        e.labels.push({ cls: S.activeClass, x: x1 + nw / 2, y: y1 + nh / 2, w: nw, h: nh });
+        e.corrected = true;
+        S.classes.add(S.activeClass);
+        S.selected = e.labels.length - 1;
+      }
+    }
+    draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
+  }
+});
+
+cv.addEventListener('mouseleave', () => {
+  S.hovered = -1;
+  if (S.drag)       S.drag = null;
+  if (S.drawing)    { S.drawing = null;    S.drawCur = null; }
+  if (S.rubberBand) { S.rubberBand = null; S.drawCur = null; }
+  cv.style.cursor = 'crosshair';
+  draw();
+});
+
+// ═══════════════════════════════════════════════════════════
+// BULK SELECT
+// ═══════════════════════════════════════════════════════════
+function selectAll() {
+  const e = S.entries[S.idx];
+  if (!e || e.labels.length === 0) return;
+  S.selectedSet = new Set(e.labels.map((_, i) => i));
+  S.selected    = -1;
+  S.drag        = null;
+  updateBulkBadge();
+  draw();
+  renderBboxList();
+  $('selAllBtn').classList.add('active');
+}
+
+function clearBulkSelect() {
+  S.selectedSet.clear();
+  S.drag = null;
+  updateBulkBadge();
+  $('selAllBtn').classList.remove('active');
+}
+
+function updateBulkBadge() {
+  const n = S.selectedSet.size;
+  $('bulkBadge').classList.toggle('show', n > 0);
+  if (n > 0) $('bulkBadge').textContent = `⧉ ${n} selected — drag any to move all · Esc to cancel`;
+}
+
+$('selAllBtn').addEventListener('click', () => {
+  if (S.selectedSet.size > 0) { clearBulkSelect(); draw(); renderBboxList(); }
+  else selectAll();
+});
+
+// ═══════════════════════════════════════════════════════════
+// SELECT ENTRY
+// ═══════════════════════════════════════════════════════════
+async function selectEntry(idx) {
+  if (idx < 0 || idx >= S.entries.length) return;
+  S.idx = idx; S.drag = null; S.hovered = -1; S.selected = -1;
+  clearBulkSelect();
+
+  const e = S.entries[idx];
+
+  if (e.hasImage) {
+    await loadImage(e);
+    $('dropZone').style.display = 'none';
+    cv.style.display = 'block';
+  } else {
+    cv.style.display = 'none';
+    $('dropZone').style.display = 'flex';
+  }
+
+  $('fnName').textContent = e.name;
+  refreshSidebar();
+  renderRightPanel();
+  $('applyCurBtn').disabled = false;
+  $('resetBtn').disabled    = false;
+  $('selAllBtn').disabled   = !(e.labels.length > 0);
+}
+
+async function loadImage(e) {
+  const url = await e.resolveUrl();
+  if (!url) return;
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      S.imgEl = img; S.imgW = img.naturalWidth; S.imgH = img.naturalHeight;
+      e.imgW  = S.imgW; e.imgH = S.imgH;
+      fitCanvas(); draw(); res();
+    };
+    img.src = url;
+  });
+}
+
+async function getDims(e) {
+  if (e.imgW && e.imgH) return;
+  const url = await e.resolveUrl();
+  if (!url) {
+    // Fallback: assume same size as currently displayed image
+    if (S.imgW && S.imgH) { e.imgW = S.imgW; e.imgH = S.imgH; }
+    return;
+  }
+  await new Promise(res => {
+    const img = new Image();
+    img.onload  = () => { e.imgW = img.naturalWidth; e.imgH = img.naturalHeight; res(); };
+    img.onerror = () => { if (S.imgW && S.imgH) { e.imgW = S.imgW; e.imgH = S.imgH; } res(); };
+    img.src = url;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// OFFSET LOGIC
+// ═══════════════════════════════════════════════════════════
+function applyOffset(e, dx, dy) {
+  const W = e.imgW || S.imgW, H = e.imgH || S.imgH;
+  if (!W || !H) return 0;
+
+  const ndx = dx / W, ndy = dy / H;
+  let clipped = 0;
+
+  e.labels = e.labels.map(l => {
+    const nx = l.x - ndx, ny = l.y - ndy;
+    const cx = clamp(nx, 0, 1), cy = clamp(ny, 0, 1);
+    if (Math.abs(cx - nx) > 1e-6 || Math.abs(cy - ny) > 1e-6) clipped++;
+    return { ...l, x: cx, y: cy };
+  });
+
+  e.corrected = true; e.clipped = clipped;
+  return clipped;
+}
+
+$('applyCurBtn').addEventListener('click', () => {
+  const e = S.entries[S.idx]; if (!e) return;
+  const c = applyOffset(e, parseFloat($('offX').value) || 0, parseFloat($('offY').value) || 0);
+  showWarn(c > 0 ? `⚠ ${c} bbox(es) clipped to image bounds.` : '');
+  draw(); renderRightPanel(); refreshSidebar();
+});
+
+$('applyAllBtn').addEventListener('click', async () => {
+  const dx = parseFloat($('offX').value) || 0;
+  const dy = parseFloat($('offY').value) || 0;
+  if (dx === 0 && dy === 0) { showWarn('Offset is 0 — nothing to apply.'); return; }
+
+  const need = S.entries.filter(e => e.hasLabels && (!e.imgW || !e.imgH));
+  if (need.length) {
+    showProg('Loading image dimensions…', 0);
+    const bs = 12;
+    for (let i = 0; i < need.length; i += bs) {
+      await Promise.all(need.slice(i, i + bs).map(getDims));
+      setProg((i + bs) / need.length); await sleep(0);
+    }
+    hideProg();
+  }
+
+  let total = 0;
+  for (const e of S.entries) if (e.hasLabels) total += applyOffset(e, dx, dy);
+
+  showWarn(total > 0 ? `⚠ ${total} bbox(es) clipped across all images.` : '');
+  draw(); renderRightPanel(); refreshSidebar();
+});
+
+$('resetBtn').addEventListener('click', () => {
+  const e = S.entries[S.idx]; if (!e) return;
+  e.labels = e.origLabels.map(l => ({ ...l })); e.corrected = false; e.clipped = 0;
+  S.undoStack = S.undoStack.filter(u => u.idx !== S.idx);
+  showWarn(''); clearBulkSelect(); draw(); renderRightPanel(); refreshSidebar();
+});
+
+// ═══════════════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════════════
+$('exportBtn').addEventListener('click', async () => {
+  const items = S.entries.filter(e => e.hasLabels);
+  if (!items.length) return;
+
+  showProg('Building ZIP…', 0);
+  const zip = new JSZip();
+
+  for (let i = 0; i < items.length; i++) {
+    zip.file(items[i].name + '.txt', items[i].labels.map(labelToLine).join('\n') + '\n');
+    if (i % 100 === 0) { setProg(i / items.length * .6); await sleep(0); }
+  }
+
+  setProg(.65);
+  const blob = await zip.generateAsync(
+    { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+    m => setProg(.65 + m.percent / 100 * .35)
+  );
+
+  hideProg();
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob), download: 'yolo_labels_corrected.zip',
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+});
+
+// ═══════════════════════════════════════════════════════════
+// UI RENDERS
+// ═══════════════════════════════════════════════════════════
+function refreshSidebar() {
+  if (!vlist) return;
+  $('corrPill').textContent = `${S.entries.filter(e => e.corrected).length} / ${S.entries.length}`;
+  vlist.refresh();
+}
+
+function renderRightPanel() {
+  const e = S.entries[S.idx];
+  if (!e) {
+    $('imgInfoGrid').innerHTML = '<span class="ig-label empty-msg" style="grid-column:span 2">No image selected</span>';
+    $('bboxScroll').innerHTML  = '<div class="empty-msg">No image selected</div>';
+    $('legendList').innerHTML  = '<div class="empty-msg">No classes loaded</div>';
+    return;
+  }
+  const W = e.imgW || S.imgW || '?', H = e.imgH || S.imgH || '?';
+  const src = e.imgFile ? 'file' : (e._zipEntry ? 'zip' : '—');
+  $('imgInfoGrid').innerHTML = `
+    <span class="ig-label">File</span>
+    <span class="ig-val" title="${e.name}">${e.name}</span>
+    <span class="ig-label">Dimensions</span>
+    <span class="ig-val">${W} × ${H} px</span>
+    <span class="ig-label">Source</span>
+    <span class="ig-val">${src}</span>
+    <span class="ig-label">Labels</span>
+    <span class="ig-val">${e.labels.length}</span>
+    <span class="ig-label">Status</span>
+    <span class="ig-val" style="color:${e.corrected ? 'var(--green)' : 'var(--text-lo)'}">
+      ${e.corrected ? (e.clipped > 0 ? '⚠ Corrected (clipped)' : '✓ Corrected') : 'Original'}
+    </span>
+    ${!(e.hasImage && e.hasLabels) ? `<span class="ig-label" style="color:var(--yellow)">Missing</span>
+    <span class="ig-val" style="color:var(--yellow)">${!e.hasImage ? 'image' : 'labels'}</span>` : ''}
+  `;
+  renderBboxList();
+  renderLegend();
+}
+
+function renderBboxList() {
+  const e = S.entries[S.idx];
+  if (!e || e.labels.length === 0) {
+    $('bboxScroll').innerHTML = '<div class="empty-msg">No bounding boxes</div>';
+    $('selAllBtn').disabled   = true;
+    return;
+  }
+  $('selAllBtn').disabled = false;
+
+  $('bboxScroll').innerHTML = e.labels.map((l, i) => {
+    const inSet = S.selectedSet.has(i);
+    const isSel = inSet || i === S.selected;
+    const cls   = isSel ? (inSet ? 'bxi sel-all' : 'bxi sel') : 'bxi';
+    const oob   = l.x < 0 || l.x > 1 || l.y < 0 || l.y > 1 ||
+                  l.x - l.w / 2 < 0 || l.x + l.w / 2 > 1 ||
+                  l.y - l.h / 2 < 0 || l.y + l.h / 2 > 1;
+    return `<div class="${cls}" data-bi="${i}">
+      <div class="bxi-swatch" style="background:${color(l.cls)}"></div>
+      <span class="bxi-text">cls:${l.cls} (${l.x.toFixed(3)},${l.y.toFixed(3)})</span>
+      ${oob ? '<span class="bxi-warn">OOB</span>' : ''}
+    </div>`;
+  }).join('');
+
+  $('bboxScroll').querySelectorAll('.bxi').forEach(el => {
+    el.addEventListener('click', () => {
+      clearBulkSelect();
+      S.selected = +el.dataset.bi;
+      draw(); renderBboxList();
+    });
+  });
+}
+
+function renderLegend() {
+  const cls = [...S.classes].sort((a, b) => a - b);
+  $('legendList').innerHTML = cls.length
+    ? cls.map(c => `<div class="leg-item"><div class="leg-sw" style="background:${color(c)}"></div><span>Class ${c}</span></div>`).join('')
+    : '<div class="empty-msg">No classes loaded</div>';
+}
+
+function updateHeader() {
+  const t = S.entries.length, im = S.entries.filter(e => e.hasImage).length,
+        lb = S.entries.filter(e => e.hasLabels).length;
+  $('hInfo').textContent    = t > 0 ? `${t} entries · ${im} images · ${lb} labels` : '';
+  $('exportBtn').disabled   = lb === 0;
+  $('applyAllBtn').disabled = t === 0;
+}
+
+function showWarn(msg) {
+  const el = $('warnBox');
+  if (msg) { el.textContent = msg; el.style.display = 'block'; }
+  else el.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROGRESS
+// ═══════════════════════════════════════════════════════════
+function showProg(title, pct) {
+  $('progTitle').textContent = title;
+  setProg(pct); $('progOverlay').classList.add('show');
+}
+function setProg(pct) {
+  $('progFill').style.width = (pct * 100).toFixed(1) + '%';
+  $('progText').textContent = Math.round(pct * 100) + '%';
+}
+function hideProg() { $('progOverlay').classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// FILE HANDLING — entry point for both drag-drop and browse
+// ═══════════════════════════════════════════════════════════
+async function handleFiles(files) {
+  if (!files.length) return;
+
+  const zips = files.filter(f => isZip(f.name));
+  const rest = files.filter(f => !isZip(f.name));
+  const prevLen = S.entries.length;
+
+  for (const zf of zips) await handleZip(zf);
+
+  if (rest.length) {
+    if (rest.length > 200) showProg('Importing files…', 0);
+    const chunk = 100;
+    for (let i = 0; i < rest.length; i += chunk) {
+      await ingestFiles(rest.slice(i, i + chunk));
+      if (rest.length > 200) setProg((i + chunk) / rest.length * .9);
+      await sleep(0);
+    }
+    if (rest.length > 200) { setProg(1); await sleep(50); hideProg(); }
+  }
+
+  if (!vlist) vlist = new VList($('fileListWrap'), 40, fiHTML, selectEntry);
+  vlist.set(S.entries, S.idx >= 0 ? S.idx : 0);
+  updateHeader(); refreshSidebar();
+
+  if (S.idx < 0 || prevLen === 0) {
+    const first = S.entries.findIndex(e => e.hasImage && e.hasLabels);
+    selectEntry(first >= 0 ? first : 0);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DRAG & DROP / FILE INPUT
+// ═══════════════════════════════════════════════════════════
+let dropCtr = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); if (++dropCtr === 1) $('canvasArea').classList.add('drag-over'); });
+document.addEventListener('dragleave', () => { if (--dropCtr <= 0) { dropCtr = 0; $('canvasArea').classList.remove('drag-over'); } });
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('drop', async e => {
+  e.preventDefault(); dropCtr = 0; $('canvasArea').classList.remove('drag-over');
+  await handleFiles([...e.dataTransfer.files]);
+});
+
+$('loadBtn').addEventListener('click',   () => $('fileInput').click());
+$('browseBtn').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', async () => {
+  await handleFiles([...$('fileInput').files]);
+  $('fileInput').value = '';
+});
+
+// ═══════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════
+new ResizeObserver(() => { if (S.imgEl && S.imgW) { fitCanvas(); draw(); } }).observe($('canvasArea'));
+
+// ═══════════════════════════════════════════════════════════
+// KEYBOARD
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('keydown', ev => {
+  if (ev.target.tagName === 'INPUT') return;
+
+  // Ctrl/Cmd + A → select all bboxes
+  if (ev.key === 'a' || ev.key === 'A' || ((ev.ctrlKey || ev.metaKey) && ev.key === 'a')) {
+    ev.preventDefault(); selectAll(); return;
+  }
+
+  switch (ev.key) {
+    case 'ArrowRight': case 'ArrowDown': case 'j':
+      ev.preventDefault();
+      selectEntry(Math.min(S.entries.length - 1, S.idx + 1));
+      vlist && vlist.set(S.entries, S.idx);
+      break;
+    case 'ArrowLeft': case 'ArrowUp': case 'k':
+      ev.preventDefault();
+      selectEntry(Math.max(0, S.idx - 1));
+      vlist && vlist.set(S.entries, S.idx);
+      break;
+    case 'Enter':
+      $('applyCurBtn').click();
+      break;
+    case 'Delete': case 'Backspace': {
+      const e = S.entries[S.idx];
+      if (!e) break;
+      if (S.selectedSet.size > 0) {
+        S.undoStack.push({ idx: S.idx, labels: e.labels.map(l => ({ ...l })) });
+        if (S.undoStack.length > 30) S.undoStack.shift();
+        e.labels = e.labels.filter((_, i) => !S.selectedSet.has(i));
+        e.corrected = true;
+        clearBulkSelect(); S.selected = -1;
+        draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
+      } else if (S.selected >= 0) {
+        S.undoStack.push({ idx: S.idx, labels: e.labels.map(l => ({ ...l })) });
+        if (S.undoStack.length > 30) S.undoStack.shift();
+        e.labels.splice(S.selected, 1);
+        e.corrected = true;
+        S.selected = -1;
+        draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
+      }
+      break;
+    }
+    case 'z': case 'Z': {
+      ev.preventDefault();
+      // Find most recent undo entry for the current image
+      let ui = -1;
+      for (let i = S.undoStack.length - 1; i >= 0; i--) {
+        if (S.undoStack[i].idx === S.idx) { ui = i; break; }
+      }
+      if (ui >= 0) {
+        const snap = S.undoStack.splice(ui, 1)[0];
+        const cur  = S.entries[S.idx];
+        cur.labels = snap.labels;
+        // Recompute corrected flag
+        cur.corrected = cur.labels.some((l, i) => {
+          const o = cur.origLabels[i];
+          return !o || Math.abs(l.x - o.x) > 1e-6 || Math.abs(l.y - o.y) > 1e-6 ||
+                       Math.abs(l.w - o.w) > 1e-6 || Math.abs(l.h - o.h) > 1e-6;
+        });
+        draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
+      }
+      break;
+    }
+    case 'Escape':
+      if (S.selectedSet.size > 0) { clearBulkSelect(); draw(); renderBboxList(); }
+      else { S.selected = -1; S.drag = null; draw(); renderBboxList(); }
+      break;
+  }
+});
+
+$('activeClass').addEventListener('change', () => {
+  S.activeClass = Math.max(0, parseInt($('activeClass').value) || 0);
+  $('activeClass').value = S.activeClass;
+});
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+renderRightPanel();
+updateHeader();
+</script>
+</body>
+</html>
