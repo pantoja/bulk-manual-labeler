@@ -32,3 +32,15 @@ Uma ferramenta simples, baseada em navegador, para aplicar correções de desloc
 *   Visualização e ajuste manual de bounding boxes.
 *   Criação e exclusão de bounding boxes.
 *   Exportação das anotações corrigidas em um arquivo `.zip`.
+
+## Atalhos do Teclado
+
+| Tecla(s) | Ação |
+| :--- | :--- |
+| `←` / `→` / `↑` / `↓` | Navegar para a imagem anterior/seguinte. |
+| `S` (manter pressionado) | Ativar o modo de seleção em área (arraste para selecionar várias caixas). |
+| `A` ou `Ctrl/Cmd + A` | Selecionar todas as caixas de anotação na imagem atual. |
+| `Delete` / `Backspace` | Excluir a(s) caixa(s) de anotação selecionada(s). |
+| `Esc` | Cancelar a seleção em área ou o desenho de uma nova caixa. |
+| `Ctrl/Cmd + Z` | Desfazer a última alteração (mover, redimensionar, criar ou excluir). |
+
