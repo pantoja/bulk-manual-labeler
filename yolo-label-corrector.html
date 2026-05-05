@@ -326,7 +326,9 @@ body {
   </div>
   <div class="h-sep"></div>
   <span class="h-info" id="hInfo"></span>
+  <span class="h-info" id="autoSaveInfo" style="color:var(--green);display:none">💾 auto-save on</span>
   <button class="btn btn-ghost btn-smart" id="smartBtn" title="Smart select — click an object to auto-bbox it (F)">✦ Smart</button>
+  <button class="btn btn-ghost" id="openFolderBtn" title="Pick a folder — corrected labels are saved to a labels/ subfolder inside it">📁 Set Save Folder</button>
   <button class="btn btn-ghost" id="loadBtn">⊕ Load Files</button>
   <input type="file" id="fileInput" multiple
          accept=".jpg,.jpeg,.png,.webp,.txt,.zip" style="display:none">
@@ -423,9 +425,6 @@ body {
 
     <div class="psec">
       <button class="btn btn-danger" id="resetBtn" disabled>↺ Reset This Image's Labels</button>
-      <button class="btn btn-danger" id="clearAllCkptBtn" style="margin-top:6px">
-        ⊘ Clear All Checkpoints (<span id="ckptCount">0</span>)
-      </button>
     </div>
   </aside>
 </div>
@@ -477,9 +476,8 @@ class Entry {
     this.origLabels  = [];
     this.labels      = [];
     this.hasLabels   = false;   // true once label data is parsed (file OR zip)
-    this.corrected       = false;
-    this.clipped         = 0;
-    this.fromCheckpoint  = false;
+    this.corrected = false;
+    this.clipped   = 0;
   }
 
   get hasImage() { return !!(this.imgFile || this._zipEntry); }
@@ -522,8 +520,9 @@ const S = {
   hovered:     -1,
   selected:    -1,
   selectedSet:  new Set(),   // indices of bulk-selected bboxes
-  smartMode:    false,
+  smartMode:      false,
   smartTolerance: 30,
+  labelsDir:      null,   // FileSystemDirectoryHandle — set when folder opened via API
   classes:     new Set(),
   undoStack:   [],          // [{idx, labels}]  — populated on drag-end
 };
@@ -625,56 +624,28 @@ function labelToLine(l) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CHECKPOINT — localStorage persistence
+// AUTO-SAVE — write .txt files back to the opened folder
 // ═══════════════════════════════════════════════════════════
-const CKPT_PREFIX = 'yolo-ckpt-v1:';
-
-function saveCheckpoint(e) {
-  if (!e || !e.corrected) return;
-  try {
-    localStorage.setItem(CKPT_PREFIX + e.name, JSON.stringify({ l: e.labels, t: Date.now() }));
-  } catch (err) {}
+function autoSave(e) {
+  if (!e || !e.corrected || !S.labelsDir) return;
+  S.labelsDir.getFileHandle(e.name + '.txt', { create: true })
+    .then(fh => fh.createWritable())
+    .then(w  => w.write(e.labels.map(labelToLine).join('\n') + '\n').then(() => w.close()))
+    .catch(err => console.warn('auto-save failed:', e.name, err));
 }
 
-function loadCheckpoint(name) {
-  try {
-    const raw = localStorage.getItem(CKPT_PREFIX + name);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function clearCheckpoint(name) {
-  localStorage.removeItem(CKPT_PREFIX + name);
-}
-
-function clearAllCheckpoints() {
-  const keys = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(CKPT_PREFIX)) keys.push(k);
+async function openFolder() {
+  if (!('showDirectoryPicker' in window)) {
+    alert('File System Access API not supported.\nUse Chrome or Edge to enable auto-save.');
+    return;
   }
-  keys.forEach(k => localStorage.removeItem(k));
-}
+  let dirHandle;
+  try { dirHandle = await showDirectoryPicker({ mode: 'readwrite' }); }
+  catch { return; }
 
-function countCheckpoints() {
-  let n = 0;
-  for (let i = 0; i < localStorage.length; i++) {
-    if ((localStorage.key(i) || '').startsWith(CKPT_PREFIX)) n++;
-  }
-  return n;
-}
-
-function updateCkptCount() {
-  $('ckptCount').textContent = countCheckpoints();
-}
-
-function applyCheckpoint(e) {
-  const ckpt = loadCheckpoint(e.name);
-  if (!ckpt) return;
-  e.labels          = ckpt.l;
-  e.corrected       = true;
-  e.fromCheckpoint  = true;
-  ckpt.l.forEach(l => S.classes.add(l.cls));
+  S.labelsDir = await dirHandle.getDirectoryHandle('labels', { create: true });
+  $('autoSaveInfo').style.display = 'inline';
+  $('openFolderBtn').classList.add('active');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -734,7 +705,7 @@ function smartSelect(mx, my) {
   e.corrected = true; e.hasLabels = true;
   S.classes.add(S.activeClass);
   S.selected = e.labels.length - 1;
-  saveCheckpoint(e);
+  autoSave(e);
   draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
 }
 
@@ -760,7 +731,6 @@ async function ingestFiles(files) {
       e.labels     = e.origLabels.map(l => ({ ...l }));
       e.origLabels.forEach(l => S.classes.add(l.cls));
       e.hasLabels  = true;
-      if (!e.fromCheckpoint) applyCheckpoint(e);
     }
   }
 
@@ -805,7 +775,6 @@ async function handleZip(file) {
       e.labels     = e.origLabels.map(l => ({ ...l }));
       e.origLabels.forEach(l => S.classes.add(l.cls));
       e.hasLabels  = true;
-      if (!e.fromCheckpoint) applyCheckpoint(e);
     }
     if (++done % 100 === 0) { setProg(0.1 + done / txtItems.length * 0.45); await sleep(0); }
   }
@@ -1078,7 +1047,7 @@ cv.addEventListener('mouseup', () => {
     }
     S.drag = null;
     cv.style.cursor = sKeyDown ? 'cell' : 'crosshair';
-    saveCheckpoint(S.entries[S.idx]);
+    autoSave(S.entries[S.idx]);
     refreshSidebar();
   } else if (S.rubberBand) {
     // Finalize selection rubber-band
@@ -1122,7 +1091,7 @@ cv.addEventListener('mouseup', () => {
         e.corrected = true;
         S.classes.add(S.activeClass);
         S.selected = e.labels.length - 1;
-        saveCheckpoint(e);
+        autoSave(e);
       }
     }
     draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
@@ -1252,7 +1221,7 @@ function applyOffset(e, dx, dy) {
 $('applyCurBtn').addEventListener('click', () => {
   const e = S.entries[S.idx]; if (!e) return;
   const c = applyOffset(e, parseFloat($('offX').value) || 0, parseFloat($('offY').value) || 0);
-  saveCheckpoint(e);
+  autoSave(e);
   showWarn(c > 0 ? `⚠ ${c} bbox(es) clipped to image bounds.` : '');
   draw(); renderRightPanel(); refreshSidebar();
 });
@@ -1274,7 +1243,7 @@ $('applyAllBtn').addEventListener('click', async () => {
   }
 
   let total = 0;
-  for (const e of S.entries) if (e.hasLabels) { total += applyOffset(e, dx, dy); saveCheckpoint(e); }
+  for (const e of S.entries) if (e.hasLabels) { total += applyOffset(e, dx, dy); autoSave(e); }
 
   showWarn(total > 0 ? `⚠ ${total} bbox(es) clipped across all images.` : '');
   draw(); renderRightPanel(); refreshSidebar();
@@ -1282,11 +1251,9 @@ $('applyAllBtn').addEventListener('click', async () => {
 
 $('resetBtn').addEventListener('click', () => {
   const e = S.entries[S.idx]; if (!e) return;
-  e.labels = e.origLabels.map(l => ({ ...l })); e.corrected = false; e.clipped = 0; e.fromCheckpoint = false;
-  clearCheckpoint(e.name);
+  e.labels = e.origLabels.map(l => ({ ...l })); e.corrected = false; e.clipped = 0;
   S.undoStack = S.undoStack.filter(u => u.idx !== S.idx);
   showWarn(''); clearBulkSelect(); draw(); renderRightPanel(); refreshSidebar();
-  updateCkptCount();
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1348,7 +1315,6 @@ function renderRightPanel() {
     <span class="ig-label">Status</span>
     <span class="ig-val" style="color:${e.corrected ? 'var(--green)' : 'var(--text-lo)'}">
       ${e.corrected ? (e.clipped > 0 ? '⚠ Corrected (clipped)' : '✓ Corrected') : 'Original'}
-      ${e.fromCheckpoint ? '<span class="ckpt-tag">checkpoint</span>' : ''}
     </span>
     ${!(e.hasImage && e.hasLabels) ? `<span class="ig-label" style="color:var(--yellow)">Missing</span>
     <span class="ig-val" style="color:var(--yellow)">${!e.hasImage ? 'image' : 'labels'}</span>` : ''}
@@ -1517,7 +1483,7 @@ document.addEventListener('keydown', ev => {
         e.labels = e.labels.filter((_, i) => !S.selectedSet.has(i));
         e.corrected = true;
         clearBulkSelect(); S.selected = -1;
-        saveCheckpoint(e);
+        autoSave(e);
         draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
       } else if (S.selected >= 0) {
         S.undoStack.push({ idx: S.idx, labels: e.labels.map(l => ({ ...l })) });
@@ -1525,7 +1491,7 @@ document.addEventListener('keydown', ev => {
         e.labels.splice(S.selected, 1);
         e.corrected = true;
         S.selected = -1;
-        saveCheckpoint(e);
+        autoSave(e);
         draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
       }
       break;
@@ -1547,7 +1513,7 @@ document.addEventListener('keydown', ev => {
           return !o || Math.abs(l.x - o.x) > 1e-6 || Math.abs(l.y - o.y) > 1e-6 ||
                        Math.abs(l.w - o.w) > 1e-6 || Math.abs(l.h - o.h) > 1e-6;
         });
-        if (cur.corrected) saveCheckpoint(cur); else clearCheckpoint(cur.name);
+        autoSave(cur);
         draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
       }
       break;
@@ -1580,20 +1546,13 @@ $('smartThr').addEventListener('input', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// CHECKPOINT UI
+// OPEN FOLDER
 // ═══════════════════════════════════════════════════════════
-$('clearAllCkptBtn').addEventListener('click', () => {
-  if (!countCheckpoints()) return;
-  clearAllCheckpoints();
-  S.entries.forEach(e => { e.fromCheckpoint = false; });
-  updateCkptCount();
-  renderRightPanel();
-});
+$('openFolderBtn').addEventListener('click', openFolder);
 
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
-updateCkptCount();
 renderRightPanel();
 updateHeader();
 </script>
