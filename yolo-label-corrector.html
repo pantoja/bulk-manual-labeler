@@ -575,9 +575,20 @@ function parseYOLO(text) {
   for (const raw of text.split('\n')) {
     const p = raw.trim().split(/\s+/);
     if (p.length < 5) continue;
-    const [cls, x, y, w, h] = p.map(Number);
-    if ([cls, x, y, w, h].some(isNaN)) continue;
-    labels.push({ cls: Math.round(cls), x, y, w, h });
+    const nums = p.map(Number);
+    if (nums.some(isNaN)) continue;
+    const cls = Math.round(nums[0]);
+    if (p.length >= 9) {
+      // OBB / polygon format: class x1 y1 x2 y2 x3 y3 x4 y4
+      const xs = [nums[1], nums[3], nums[5], nums[7]];
+      const ys = [nums[2], nums[4], nums[6], nums[8]];
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      labels.push({ cls, x: (minX + maxX) / 2, y: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY });
+    } else {
+      const [, x, y, w, h] = nums;
+      labels.push({ cls, x, y, w, h });
+    }
   }
   return labels;
 }
@@ -593,6 +604,7 @@ async function ingestFiles(files) {
   const map = new Map(S.entries.map(e => [e.name, e]));
 
   for (const f of files) {
+    if (f.name.startsWith('._')) continue;
     const n = base(f.name);
     if (!map.has(n)) map.set(n, new Entry(n));
     const e = map.get(n);
@@ -633,7 +645,7 @@ async function handleZip(file) {
   zip.forEach((path, entry) => {
     if (entry.dir) return;
     const fname = path.split('/').pop();
-    if (!fname) return;
+    if (!fname || fname.startsWith('._')) return;
     const n = base(fname);
     if (!n) return;
     if (isImg(fname))      imgItems.push({ entry, name: n, fname });
