@@ -1,6 +1,6 @@
 # YOLO Label Corrector
 
-Uma ferramenta simples, baseada em navegador, para aplicar correções de deslocamento (offset) em lote para anotações de bounding box no formato YOLO.
+Uma ferramenta simples, baseada em navegador, para corrigir e revisar anotações de bounding box no formato YOLO. Suporta o formato padrão (`class cx cy w h`) e o formato OBB/polígono do Roboflow (`class x1 y1 x2 y2 x3 y3 x4 y4`), convertendo automaticamente para bbox alinhado ao eixo.
 
 ## Como Usar
 
@@ -16,31 +16,35 @@ Uma ferramenta simples, baseada em navegador, para aplicar correções de desloc
 
 3.  **Corrija as Anotações**:
     *   Selecione uma imagem na lista à esquerda para visualizá-la.
-    *   No painel direito "Offset Correction", insira os valores de deslocamento em pixels (`Δx` e `Δy`).
-    *   Clique em **"Apply to This Image"** para corrigir apenas a imagem atual ou **"Apply to All Images"** para aplicar o deslocamento em todo o conjunto de dados.
-    *   Você também pode ajustar caixas individualmente arrastando-as ou desenhar novas caixas arrastando o mouse sobre a imagem.
+    *   **Offset em lote**: No painel direito, insira os valores de deslocamento em pixels (`Δx` e `Δy`) e clique em **"Apply to This Image"** ou **"Apply to All Images"**.
+    *   **Ajuste manual**: Arraste caixas existentes para reposicioná-las. Mantenha `S` pressionado e arraste para selecionar várias caixas ao mesmo tempo.
+    *   **Nova caixa manual**: Arraste o mouse sobre uma área vazia da imagem para desenhar uma nova caixa.
+    *   **Smart Select**: Ative o modo `✦ Smart` (botão no cabeçalho ou tecla `F`) e clique sobre um objeto para criar uma caixa automaticamente via flood fill. Use o slider **Tolerance** para ajustar a sensibilidade.
 
 4.  **Exporte os Resultados**:
-    *   Após fazer as correções, clique no botão **"Export ZIP"**.
-    *   Isso fará o download de um arquivo `.zip` contendo todos os arquivos de anotação `.txt` atualizados.
+    *   Clique no botão **"Export ZIP"** para baixar todas as anotações corrigidas em um arquivo `.zip`.
 
 ## Funcionalidades
 
-*   Carregamento de imagens e anotações via arrastar e soltar ou seletor de arquivos.
-*   Suporte para carregamento em lote via arquivo `.zip`.
-*   Aplicação de deslocamento (offset) em pixels para uma ou todas as imagens.
-*   Visualização e ajuste manual de bounding boxes.
-*   Criação e exclusão de bounding boxes.
-*   Exportação das anotações corrigidas em um arquivo `.zip`.
+*   Carregamento via arrastar e soltar ou seletor de arquivos, com suporte a `.zip`.
+*   Conversão automática do formato OBB/polígono do Roboflow para bbox alinhado ao eixo.
+*   Arquivos de metadados do macOS (`._*`) ignorados automaticamente.
+*   Aplicação de deslocamento em pixels para uma ou todas as imagens.
+*   Ajuste manual de caixas por arrastar, seleção múltipla e exclusão.
+*   **Smart Select**: flood fill a partir do pixel clicado para estimar uma bounding box automaticamente — ideal para objetos escuros sobre fundo claro.
+*   **Checkpoints automáticos**: cada alteração é salva no `localStorage`. Ao reabrir a ferramenta e carregar os mesmos arquivos, o progresso é restaurado automaticamente (indicado pela tag `checkpoint` no painel de status). O botão "Clear All Checkpoints" apaga todo o progresso salvo.
+*   Desfazer por imagem (histórico de 30 estados).
+*   Exportação das anotações corrigidas em `.zip` (formato YOLO bbox padrão).
 
 ## Atalhos do Teclado
 
 | Tecla(s) | Ação |
 | :--- | :--- |
-| `←` / `→` / `↑` / `↓` | Navegar para a imagem anterior/seguinte. |
+| `←` `→` `↑` `↓` / `j` `k` | Navegar para a imagem anterior/seguinte. |
+| `F` | Ativar/desativar o modo Smart Select. |
 | `S` (manter pressionado) | Ativar o modo de seleção em área (arraste para selecionar várias caixas). |
-| `A` ou `Ctrl/Cmd + A` | Selecionar todas as caixas de anotação na imagem atual. |
-| `Delete` / `Backspace` | Excluir a(s) caixa(s) de anotação selecionada(s). |
-| `Esc` | Cancelar a seleção em área ou o desenho de uma nova caixa. |
-| `Ctrl/Cmd + Z` | Desfazer a última alteração (mover, redimensionar, criar ou excluir). |
-
+| `A` ou `Ctrl/Cmd + A` | Selecionar todas as caixas na imagem atual. |
+| `Delete` / `Backspace` | Excluir a(s) caixa(s) selecionada(s). |
+| `Enter` | Aplicar o offset à imagem atual. |
+| `Z` | Desfazer a última alteração. |
+| `Esc` | Cancelar seleção em área ou deselecionar caixas. |
