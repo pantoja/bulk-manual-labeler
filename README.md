@@ -21,8 +21,9 @@ Uma ferramenta simples, baseada em navegador, para corrigir e revisar anotaçõe
     *   **Nova caixa manual**: Arraste o mouse sobre uma área vazia da imagem para desenhar uma nova caixa.
     *   **Smart Select**: Ative o modo `✦ Smart` (botão no cabeçalho ou tecla `F`) e clique sobre um objeto para criar uma caixa automaticamente via flood fill. Use o slider **Tolerance** para ajustar a sensibilidade.
 
-4.  **Exporte os Resultados**:
-    *   Clique no botão **"Export ZIP"** para baixar todas as anotações corrigidas em um arquivo `.zip`.
+4.  **Salve os Resultados**:
+    *   **Auto-save (recomendado)**: Clique em **"Set Save Folder"**, selecione qualquer pasta (ex: `treino_batch_2/`). A ferramenta cria automaticamente uma subpasta `labels/` dentro dela e salva cada arquivo `.txt` assim que você fizer uma correção. Requer Chrome ou Edge.
+    *   **Export manual**: Clique em **"Export ZIP"** para baixar todas as anotações corrigidas de uma vez.
 
 ## Funcionalidades
 
@@ -46,5 +47,7 @@ Uma ferramenta simples, baseada em navegador, para corrigir e revisar anotaçõe
 | `A` ou `Ctrl/Cmd + A` | Selecionar todas as caixas na imagem atual. |
 | `Delete` / `Backspace` | Excluir a(s) caixa(s) selecionada(s). |
 | `Enter` | Aplicar o offset à imagem atual. |
+| `Ctrl/Cmd + C` | Copiar caixas selecionadas (ou todas, se nenhuma estiver selecionada). |
+| `Ctrl/Cmd + V` | Colar caixas copiadas na imagem atual. |
 | `Z` | Desfazer a última alteração. |
 | `Esc` | Cancelar seleção em área ou deselecionar caixas. |

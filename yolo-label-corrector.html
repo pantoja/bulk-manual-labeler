@@ -523,6 +523,7 @@ const S = {
   smartMode:      false,
   smartTolerance: 30,
   labelsDir:      null,   // FileSystemDirectoryHandle — set when folder opened via API
+  clipboard:      [],     // copied labels, persists across image navigation
   classes:     new Set(),
   undoStack:   [],          // [{idx, labels}]  — populated on drag-end
 };
@@ -1516,6 +1517,35 @@ document.addEventListener('keydown', ev => {
         autoSave(cur);
         draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
       }
+      break;
+    }
+    case 'c': case 'C': {
+      if (!(ev.ctrlKey || ev.metaKey)) break;
+      ev.preventDefault();
+      const ec = S.entries[S.idx]; if (!ec) break;
+      if (S.selectedSet.size > 0) {
+        S.clipboard = ec.labels.filter((_, i) => S.selectedSet.has(i)).map(l => ({ ...l }));
+      } else if (S.selected >= 0) {
+        S.clipboard = [{ ...ec.labels[S.selected] }];
+      } else {
+        S.clipboard = ec.labels.map(l => ({ ...l }));
+      }
+      break;
+    }
+    case 'v': case 'V': {
+      if (!(ev.ctrlKey || ev.metaKey) || !S.clipboard.length) break;
+      ev.preventDefault();
+      const ev2 = S.entries[S.idx]; if (!ev2) break;
+      S.undoStack.push({ idx: S.idx, labels: ev2.labels.map(l => ({ ...l })) });
+      if (S.undoStack.length > 30) S.undoStack.shift();
+      const start = ev2.labels.length;
+      S.clipboard.forEach(l => { ev2.labels.push({ ...l }); S.classes.add(l.cls); });
+      ev2.corrected = true; ev2.hasLabels = true;
+      S.selectedSet = new Set(ev2.labels.map((_, i) => i).slice(start));
+      S.selected = -1;
+      updateBulkBadge();
+      autoSave(ev2);
+      draw(); renderBboxList(); renderRightPanel(); refreshSidebar();
       break;
     }
     case 'Escape':
